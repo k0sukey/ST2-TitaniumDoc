@@ -51,7 +51,7 @@ class ThreadProgress():
 
         sublime.set_timeout(lambda: self.run(i), 100)
 
-class DownloadDocuemntThread(threading.Thread):
+class DownloadDocumentThread(threading.Thread):
     def __init__(self, manager, apiurl, on_complete):
         self.manager = manager
         self.apiurl = apiurl
@@ -89,11 +89,34 @@ class DocumentManager():
         window.insert(window.begin_edit(), window.size(), document["name"] + "\n")
         window.insert(window.begin_edit(), window.size(), "==================================================\n")
 
-#        if (docuemnt["description"]):
-#            window.insert(window.begin_edit(), window.size(), self.stripper.strip(docuemnt["description"]) + "\n\n")
+        if self.settings.get('show_platforms') and document["platforms"]:
+            window.insert(window.begin_edit(), window.size(), "### Platforms\n")
 
-        window.insert(window.begin_edit(), window.size(), "### Properties\n")
-        if (document["properties"]):
+            for key, value in enumerate(document["platforms"]):
+                window.insert(window.begin_edit(), window.size(), value["pretty_name"] + " : " + value["since"] + "\n")
+
+            window.insert(window.begin_edit(), window.size(), "\n")
+
+        if self.settings.get('show_summary') and document["summary"]:
+            window.insert(window.begin_edit(), window.size(), "### Summary\n")
+            window.insert(window.begin_edit(), window.size(), self.stripper.strip(document["summary"]) + "\n\n")
+
+        if self.settings.get('show_description') and document["description"]:
+            window.insert(window.begin_edit(), window.size(), "### Description\n")
+            window.insert(window.begin_edit(), window.size(), self.stripper.strip(document["description"]) + "\n\n")
+
+        if self.settings.get('show_examples') and document["examples"]:
+            window.insert(window.begin_edit(), window.size(), "### Examples\n")
+
+            for key, value in enumerate(document["examples"]):
+                window.insert(window.begin_edit(), window.size(), value["description"] + "\n")
+                window.insert(window.begin_edit(), window.size(), self.stripper.strip(value["code"]) + "\n")
+
+            window.insert(window.begin_edit(), window.size(), "\n")
+
+        if self.settings.get('show_properties') and document["properties"]:
+            window.insert(window.begin_edit(), window.size(), "### Properties\n")
+
             for key, value in enumerate(document["properties"]):
                 if (isinstance(value["type"], list)):
                     type = ", ".join(value["type"])
@@ -102,10 +125,11 @@ class DocumentManager():
 
                 window.insert(window.begin_edit(), window.size(), value["name"] + " : " + type + " : " + self.stripper.strip(value["summary"].replace("\n", "")) + "\n")
 
-        window.insert(window.begin_edit(), window.size(), "\n")
+            window.insert(window.begin_edit(), window.size(), "\n")
 
-        window.insert(window.begin_edit(), window.size(), "### Methods\n")
-        if (document["methods"]):
+        if self.settings.get('show_methods') and document["methods"]:
+            window.insert(window.begin_edit(), window.size(), "### Methods\n")
+
             for key, value in enumerate(document["methods"]):
                 parameters = []
                 for i, j in enumerate(value["parameters"]):
@@ -118,10 +142,11 @@ class DocumentManager():
 
                 window.insert(window.begin_edit(), window.size(), value["name"] + "(" + ", ".join(parameters) + ") : " + self.stripper.strip(value["summary"].replace("\n", "")) + "\n")
 
-        window.insert(window.begin_edit(), window.size(), "\n")
+            window.insert(window.begin_edit(), window.size(), "\n")
 
-        window.insert(window.begin_edit(), window.size(), "### Events\n")
-        if (document["events"]):
+        if self.settings.get('show_events') and document["events"]:
+            window.insert(window.begin_edit(), window.size(), "### Events\n")
+
             for key, value in enumerate(document["events"]):
                 window.insert(window.begin_edit(), window.size(), value["name"] + " : " + self.stripper.strip(value["summary"].replace("\n", "")) + "\n")
 
@@ -132,7 +157,7 @@ class DocumentManager():
     def check_document(self):
         return os.path.exists(self.apidocpath)
 
-    def download_docuemnt(self):
+    def download_document(self):
         os.mkdir(self.apidocpath)
 
         apiindex = []
@@ -159,8 +184,8 @@ class TitaniumDocCommand(sublime_plugin.WindowCommand):
         elif not self.manager.check_document():
             sublime.message_dialog("Titanium API Document download.")
             self.manager.thread = True
-            on_complete = lambda: self.manager.download_docuemnt()
-            thread = DownloadDocuemntThread(self.manager, str(self.manager.settings.get("apiurl")), on_complete)
+            on_complete = lambda: self.manager.download_document()
+            thread = DownloadDocumentThread(self.manager, str(self.manager.settings.get("apiurl")), on_complete)
             thread.start()
             ThreadProgress(thread, "Downloading API Document", "Downloaded API Document")
         else:
