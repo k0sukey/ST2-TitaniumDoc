@@ -7,6 +7,7 @@ import sublime_plugin
 import threading
 import urllib2
 
+
 class HTMLStripper(HTMLParser):
     def __init__(self):
         HTMLParser.__init__(self)
@@ -20,6 +21,7 @@ class HTMLStripper(HTMLParser):
         self.close()
         return self.string
 
+
 class ThreadProgress():
     def __init__(self, thread, message, success_message):
         self.thread = thread
@@ -30,6 +32,8 @@ class ThreadProgress():
         sublime.set_timeout(lambda: self.run(0), 100)
 
     def run(self, i):
+        self.thread.manager.progress = self.thread.is_alive()
+
         if not self.thread.is_alive():
             if hasattr(self.thread, 'result') and not self.thread.result:
                 sublime.status_message('')
@@ -51,6 +55,7 @@ class ThreadProgress():
 
         sublime.set_timeout(lambda: self.run(i), 100)
 
+
 class DownloadDocumentThread(threading.Thread):
     def __init__(self, manager, apiurl, on_complete):
         self.manager = manager
@@ -66,13 +71,14 @@ class DownloadDocumentThread(threading.Thread):
             if self.on_complete:
                 sublime.set_timeout(self.on_complete, 1)
 
+
 class DocumentManager():
     def __init__(self):
         self.settings = sublime.load_settings("TitaniumDoc.sublime-settings")
         self.stripper = HTMLStripper()
         self.apidocpath = os.path.dirname(os.path.abspath(__file__)) + "/" + md5.new(str(self.settings.get('apiurl'))).hexdigest()
         self.panel = []
-        self.thread = False
+        self.progress = False
         self.result = ""
 
     def get_panel(self):
@@ -82,40 +88,43 @@ class DocumentManager():
         return self.panel
 
     def show_document(self, index):
+        render = []
         document = json.loads(open(self.apidocpath + "/" + self.panel[index] + ".json").read())
 
-        window = sublime.Window.new_file(sublime.active_window())
-
-        window.insert(window.begin_edit(), window.size(), document["name"] + "\n")
-        window.insert(window.begin_edit(), window.size(), "==================================================\n")
+        render.append(document["name"])
+        render.append("==================================================")
 
         if self.settings.get('show_platforms') and document["platforms"]:
-            window.insert(window.begin_edit(), window.size(), "### Platforms\n")
+            render.append("### Platforms")
 
+            platforms = []
             for key, value in enumerate(document["platforms"]):
-                window.insert(window.begin_edit(), window.size(), value["pretty_name"] + " : " + value["since"] + "\n")
+                platforms.append(value["pretty_name"] + " : " + value["since"])
 
-            window.insert(window.begin_edit(), window.size(), "\n")
+            render.append(", ".join(platforms))
+            render.append("")
 
         if self.settings.get('show_summary') and document["summary"]:
-            window.insert(window.begin_edit(), window.size(), "### Summary\n")
-            window.insert(window.begin_edit(), window.size(), self.stripper.strip(document["summary"]) + "\n\n")
+            render.append("### Summary")
+            render.append(self.stripper.strip(document["summary"]))
+            render.append("")
 
         if self.settings.get('show_description') and document["description"]:
-            window.insert(window.begin_edit(), window.size(), "### Description\n")
-            window.insert(window.begin_edit(), window.size(), self.stripper.strip(document["description"]) + "\n\n")
+            render.append("### Description")
+            render.append(self.stripper.strip(document["description"]))
+            render.append("")
 
         if self.settings.get('show_examples') and document["examples"]:
-            window.insert(window.begin_edit(), window.size(), "### Examples\n")
+            render.append("### Examples")
 
             for key, value in enumerate(document["examples"]):
-                window.insert(window.begin_edit(), window.size(), value["description"] + "\n")
-                window.insert(window.begin_edit(), window.size(), self.stripper.strip(value["code"]) + "\n")
+                render.append(value["description"])
+                render.append(self.stripper.strip(value["code"]))
 
-            window.insert(window.begin_edit(), window.size(), "\n")
+            render.append("")
 
         if self.settings.get('show_properties') and document["properties"]:
-            window.insert(window.begin_edit(), window.size(), "### Properties\n")
+            render.append("### Properties")
 
             for key, value in enumerate(document["properties"]):
                 if (isinstance(value["type"], list)):
@@ -123,14 +132,21 @@ class DocumentManager():
                 else:
                     type = value["type"]
 
-                window.insert(window.begin_edit(), window.size(), value["name"] + " : " + type + " : " + self.stripper.strip(value["summary"].replace("\n", "")) + "\n")
+                render.append(value["name"] + " : " + type + "\n    " + self.stripper.strip(value["summary"].replace("\n", "")))
 
-            window.insert(window.begin_edit(), window.size(), "\n")
+            render.append("")
 
         if self.settings.get('show_methods') and document["methods"]:
-            window.insert(window.begin_edit(), window.size(), "### Methods\n")
+            render.append("### Methods")
 
             for key, value in enumerate(document["methods"]):
+                returns = []
+                if (isinstance(value["returns"], list)):
+                    for i, j in enumerate(value["returns"]):
+                        returns.append(j["type"])
+                else:
+                    returns.append(value["returns"]["type"])
+
                 parameters = []
                 for i, j in enumerate(value["parameters"]):
                     if (isinstance(j["type"], list)):
@@ -140,16 +156,26 @@ class DocumentManager():
 
                     parameters.append(type + " " + j["name"])
 
-                window.insert(window.begin_edit(), window.size(), value["name"] + "(" + ", ".join(parameters) + ") : " + self.stripper.strip(value["summary"].replace("\n", "")) + "\n")
+                render.append("/".join(returns) + " " + value["name"] + "(" + ", ".join(parameters) + ")\n    " + self.stripper.strip(value["summary"].replace("\n", "")))
 
-            window.insert(window.begin_edit(), window.size(), "\n")
+            render.append("")
 
         if self.settings.get('show_events') and document["events"]:
-            window.insert(window.begin_edit(), window.size(), "### Events\n")
+            render.append("### Events")
 
+            adjust = 0
+            events = []
             for key, value in enumerate(document["events"]):
-                window.insert(window.begin_edit(), window.size(), value["name"] + " : " + self.stripper.strip(value["summary"].replace("\n", "")) + "\n")
+                events.append(value)
 
+                if len(value["name"]) > adjust:
+                    adjust = len(value["name"])
+
+            for value in events:
+                render.append(value["name"].ljust(adjust) + " : " + self.stripper.strip(value["summary"].replace("\n", "")))
+
+        window = sublime.Window.new_file(sublime.active_window())
+        window.insert(window.begin_edit(), window.size(), "\n".join(render))
         window.set_scratch(True)
         window.set_read_only(True)
         window.set_name(document["name"] + " - Titanium API Document")
@@ -173,21 +199,19 @@ class DocumentManager():
         f.write(json.dumps(apiindex))
         f.close()
 
-        self.thread = False
 
 class TitaniumDocCommand(sublime_plugin.WindowCommand):
     manager = DocumentManager()
 
     def run(self, *args, **kwargs):
-        if self.manager.thread:
+        if self.manager.progress:
             sublime.message_dialog("Titanium API Document downloading now. Please try again later.")
         elif not self.manager.check_document():
-            sublime.message_dialog("Titanium API Document download.")
-            self.manager.thread = True
-            on_complete = lambda: self.manager.download_document()
-            thread = DownloadDocumentThread(self.manager, str(self.manager.settings.get("apiurl")), on_complete)
-            thread.start()
-            ThreadProgress(thread, "Downloading API Document", "Downloaded API Document")
+            if sublime.ok_cancel_dialog("Do you want to download the Titanium API Document?", "Download"):
+                on_complete = lambda: self.manager.download_document()
+                thread = DownloadDocumentThread(self.manager, str(self.manager.settings.get("apiurl")), on_complete)
+                thread.start()
+                ThreadProgress(thread, "Downloading API Document", "Downloaded API Document")
         else:
             self.window.show_quick_panel(self.manager.get_panel(), self._quick_panel_callback)
 
